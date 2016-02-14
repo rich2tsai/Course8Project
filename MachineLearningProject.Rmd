@@ -152,7 +152,12 @@ confusionMatrix(predict(fit.nnet, newdata=testing),
 
 Both models left much to be desired for their levels of accuracy (at around 40%), and it seems to be not worthwhile combining the two predictors given that.
 
-But for the sake of completeness of this project, we use the bayesglm model to predict on the testSet.
+```{r cache=TRUE, warning=FALSE}
+resamps = resamples(list(bayesglm=fit.bayesglm, nnet=fit.nnet))
+bwplot(resamps)
+```
+
+But for the sake of completeness for this project, we use the bayesglm model to predict on the testSet.
 
 ```{r cache=TRUE, message=FALSE, warning=FALSE}
 answers = predict(fit.bayesglm, newdata=testSet)
