@@ -1,0 +1,159 @@
+---
+title: "Coursera - Practical Machine Learning - Course Project"
+date: 14 Feb 2016
+output: html_document
+---
+
+```{r setoptions, echo=FALSE, message=FALSE}
+options(scipen=2)    #less scientific notation for this assignment
+library(caret)
+```
+
+##Introduction
+"Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks." - Extract from course material
+
+Using those measurements, our goal is to predict the manner in which they did the exercise. This is the "classe" variable in the training set.
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+##Data and Exploratory Analysis
+
+```{r message=FALSE, cache=TRUE}
+trainUrl = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv";
+download.file(trainUrl, destfile="./pml-training.csv", method="curl")
+testUrl = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv";
+download.file(testUrl, destfile="./pml-testing.csv", method="curl")
+trainSet = read.csv("./pml-training.csv", na.strings=c("NA",""))
+testSet = read.csv("./pml-testing.csv", na.strings=c("NA",""))
+```
+
+```{r}
+# check the dimensions
+rbind(dim(trainSet), dim(testSet))
+```
+
+There are a lot of variables to explore by plotting, but to begin with, we picked measurements related to arms as they are most likely to move the most with physical activities. Also, given there are x, y and z dimensions to the measurements, 3D plots are utilised.
+
+```{r cache=TRUE, warning=FALSE}
+library(plot3D)
+par(mfrow=c(1,3))
+plot3D::points3D(
+    trainSet$gyros_arm_x, trainSet$gyros_arm_y, trainSet$gyros_arm_z, 
+    pch=46,col=trainSet$classe,
+    main="Gyros_arm Coloured by Activity")
+plot3D::points3D(
+    trainSet$accel_arm_x, trainSet$accel_arm_y, trainSet$accel_arm_z, 
+    pch=46,col=trainSet$classe,
+    main="Accel_arm")
+plot3D::points3D(
+    trainSet$magnet_arm_x, trainSet$magnet_arm_y, trainSet$magnet_arm_z, 
+    pch=46,col=trainSet$classe,
+    main="Magnet_arm")
+```
+
+There are some visible patterns, especially with the magnet_arm plot, which clearly tells the activities apart.
+
+##Cleaning Data
+
+First, we remove variables that are related to the data acquisition exercise itself, such as id, timestamps.
+
+```{r cache=TRUE}
+dataSet = trainSet #use a new dataframe
+dataSet = dataSet[, -(1:6)]
+```
+
+Second, we remove the near zero variables to reduce the number of predictors, which hopefully can reduce the complexity of the eventual model.
+
+```{r cache=TRUE}
+nzv = nearZeroVar(dataSet, saveMetrics=TRUE)
+mask = (nzv$zeroVar | nzv$nzv) #to remove
+#names(dataSet)[mask]
+dataSet = dataSet[,names(dataSet)[!mask]]
+```
+
+Third, we remove variables that have more than 20% NAs. The threshold arbitrary but we may consider imputing with values if time permits.
+
+```{r cache=TRUE}
+mask = (colSums(is.na(dataSet)) > round(nrow(dataSet)*0.20)) #to remove
+#names(dataSet)[mask]
+dataSet = dataSet[,names(dataSet)[!mask]]
+```
+
+##Training the Model
+
+To reduce overfitting, trainControl is used to perform 5-fold cross validation.
+
+```{r cache=TRUE}
+set.seed(12345)
+inTrain <- createDataPartition(y=dataSet$classe,
+    p=0.70, list=FALSE)
+training <- dataSet[inTrain,]
+testing <- dataSet[-inTrain,]
+
+tc = trainControl(method = "cv", number = 5, verboseIter=FALSE, 
+    preProcOptions="pca", allowParallel=TRUE)
+```
+
+For the sake of keeping the report succinct, we then test just two standard models: Random Forest, and Gradient Boosting Machine.
+
+```{r cache=TRUE, warning=FALSE}
+#set.seed(12345)
+#fit.rf = train(classe ~ ., data=training, trControl=tc,
+#    method="rf", prox=TRUE)
+#fit.rf
+```
+
+```{r cache=TRUE, warning=FALSE}
+#set.seed(12345)
+#fit.gbm = train(classe ~ ., data=training, trControl=tc,
+#    method="gbm", verbose=FALSE)
+#fit.gbm
+```
+
+Unfortunately, the only computing resource at the author's disposal is of a MacBook Air with a mere 1.4 GHz processor (late 2010). It was unable to complete either model training operation within a satisfactory timeframe (> 8 hours and counting).
+
+Therefore we switch to other models that demand less computing power.
+
+###Bayes Generalised Linear Model
+
+```{r cache=TRUE, warning=FALSE}
+set.seed(12345)
+fit.bayesglm = train(classe ~ ., data=training, trControl=tc,
+    method="bayesglm", trace=FALSE)
+fit.bayesglm
+confusionMatrix(predict(fit.bayesglm, newdata=testing),
+    testing$classe)
+```
+
+```{r cache=TRUE, echo=FALSE, warning=FALSE}
+#set.seed(12345)
+#fit.svm = train(classe ~ ., data=training, trControl=tc,
+#    method="svmLinear")
+#fit.svm
+```
+
+```{r cache=TRUE, echo=FALSE, warning=FALSE}
+#set.seed(12345)
+#fit.lb = train(classe ~ ., data=training, trControl=tc,
+#    method="LogitBoost")
+#fit.lb
+```
+
+###Neural Network
+
+```{r cache=TRUE, warning=FALSE}
+set.seed(12345)
+fit.nnet = train(classe ~ ., data=training, trControl=tc,
+    method="nnet", verbose=FALSE, trace = FALSE) 
+fit.nnet
+confusionMatrix(predict(fit.nnet, newdata=testing),
+    testing$classe)
+```
+
+Both models left much to be desired for their levels of accuracy (at around 40%), and it seems to be not worthwhile combining the two predictors given that.
+
+But for the sake of completeness of this project, we use the bayesglm model to predict on the testSet.
+
+```{r cache=TRUE, message=FALSE, warning=FALSE}
+answers = predict(fit.bayesglm, newdata=testSet)
+```
